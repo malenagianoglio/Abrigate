@@ -1,0 +1,14 @@
+{
+  "name": "abrigate-api",
+  "version": "1.0.0",
+  "description": "Proxy de OpenWeather con caché para Abrigate, desplegado en Cloud Run",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "carga": "node carga.js"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}
