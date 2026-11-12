@@ -16,3 +16,7 @@ local.properties
 
 # Config de Firebase: cada uno baja la suya desde la consola
 app/google-services.json
+
+# Dependencias del backend
+backend/node_modules/
+backend/.env

@@ -7,6 +7,18 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+// Claves locales (no se suben al repo): OPENWEATHER_API_KEY, ABRIGATE_API_URL,
+// ADMOB_APP_ID y ADMOB_BANNER_ID.
+val props = Properties().apply {
+    val archivo = rootProject.file("local.properties")
+    if (archivo.exists()) load(FileInputStream(archivo))
+}
+
+// IDs de prueba publicados por Google. Se usan en debug para no hacer clics
+// sobre anuncios reales propios (AdMob puede suspender la cuenta por eso).
+val admobAppPrueba = "ca-app-pub-3940256099942544~3347511713"
+val admobBannerPrueba = "ca-app-pub-3940256099942544/6300978111"
+
 android {
     namespace = "com.utn.abrigate"
     compileSdk {
@@ -24,19 +36,34 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        val props = Properties()
-        val archivo = rootProject.file("local.properties")
-        if (archivo.exists()) props.load(FileInputStream(archivo))
-
         buildConfigField(
             "String",
             "OPENWEATHER_API_KEY",
             "\"${props.getProperty("OPENWEATHER_API_KEY") ?: ""}\""
         )
+
+        // URL del servicio abrigate-api en Cloud Run (termina en "/").
+        // Valida las compras de Abrigate Plus del lado del servidor.
+        buildConfigField(
+            "String",
+            "ABRIGATE_API_URL",
+            "\"${props.getProperty("ABRIGATE_API_URL") ?: ""}\""
+        )
     }
 
     buildTypes {
+        debug {
+            manifestPlaceholders["admobAppId"] = admobAppPrueba
+            buildConfigField("String", "ADMOB_BANNER_ID", "\"$admobBannerPrueba\"")
+        }
         release {
+            manifestPlaceholders["admobAppId"] =
+                props.getProperty("ADMOB_APP_ID") ?: admobAppPrueba
+            buildConfigField(
+                "String",
+                "ADMOB_BANNER_ID",
+                "\"${props.getProperty("ADMOB_BANNER_ID") ?: admobBannerPrueba}\""
+            )
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -57,8 +84,12 @@ android {
 dependencies {
     implementation(platform("com.google.firebase:firebase-bom:34.1.0"))
     implementation("com.google.firebase:firebase-analytics")
-    implementation("com.google.firebase:firebase-ai")
     implementation("com.google.firebase:firebase-appcheck-debug")
+    implementation("com.google.firebase:firebase-auth")
+
+    // TP4: monetización
+    implementation("com.android.billingclient:billing-ktx:8.3.0")
+    implementation("com.google.android.gms:play-services-ads:25.5.0")
 
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")

@@ -30,6 +30,29 @@ object AnalyticsManager {
         }
     }
 
+    // --- TP4: embudo de monetización (paywall → plan → compra) ---
+
+    /** origen: "banner", "encabezado" (botón Plus) u otro punto de entrada. */
+    fun paywallMostrado(origen: String) {
+        analytics.logEvent("paywall_mostrado") { param("origen", origen) }
+    }
+
+    fun planSeleccionado(plan: String) {
+        analytics.logEvent("plan_seleccionado") { param("plan", plan) }
+    }
+
+    fun compraCompletada(plan: String?) {
+        analytics.logEvent("compra_completada") { param("plan", plan ?: "restaurada") }
+    }
+
+    fun compraCancelada(plan: String?) {
+        analytics.logEvent("compra_cancelada") { param("plan", plan ?: "?") }
+    }
+
+    fun quitarAnunciosClick() {
+        analytics.logEvent("quitar_anuncios_click") { param("pantalla", "clima") }
+    }
+
     fun errorIntegracion(servicio: String, detalle: String) {
         analytics.logEvent("error_integracion") {
             param("servicio", servicio)

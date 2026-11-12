@@ -1,52 +1,40 @@
 package com.utn.abrigate.data
 
 import android.util.Log
-import com.google.firebase.Firebase
-import com.google.firebase.ai.ai
-import com.google.firebase.ai.type.GenerativeBackend
-import com.google.firebase.ai.type.generationConfig
-import com.google.gson.Gson
+import com.utn.abrigate.data.remote.AbrigateApiClient
+import com.utn.abrigate.data.remote.RecomendacionPedido
 import com.utn.abrigate.domain.Clima
 import com.utn.abrigate.domain.Recomendacion
 import com.utn.abrigate.domain.RecomendacionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * Pide la recomendación a abrigate-api, que llama a Gemini con una clave de un
+ * proyecto sin facturación (nivel gratuito). Antes la app llamaba a Gemini directo
+ * con Firebase AI Logic, pero como abrigate-fed6f tiene facturación vinculada,
+ * Google lo cobraba con créditos prepagos.
+ */
 class RecomendacionRepositoryImpl : RecomendacionRepository {
-
-    private val modelo = Firebase.ai(backend = GenerativeBackend.googleAI())
-        .generativeModel(
-            modelName = "gemini-3.8-flash",
-            generationConfig = generationConfig {
-                temperature = 0.8f
-                responseMimeType = "application/json"
-            }
-        )
 
     override suspend fun generar(clima: Clima): Result<Recomendacion> =
         withContext(Dispatchers.IO) {
-            val prompt = """
-                Sos un asistente de vestimenta argentino. Hablás en español rioplatense,
-                breve y directo, sin emojis.
-
-                Clima actual en ${clima.ciudad}: ${clima.temperatura}°C,
-                sensación térmica ${clima.sensacion}°C, ${clima.descripcion},
-                humedad ${clima.humedad}%, viento ${clima.vientoKmh} km/h.
-
-                Respondé únicamente con un JSON con esta forma exacta:
-                {"outfit": "...", "actividad": "...", "tip": "..."}
-
-                outfit: qué ponerse hoy, máximo 20 palabras.
-                actividad: una actividad recomendada para este clima, máximo 15 palabras.
-                tip: un consejo práctico y concreto, máximo 15 palabras.
-            """.trimIndent()
-
+            val api = AbrigateApiClient.api
+                ?: return@withContext Result.failure(
+                    IllegalStateException("Falta configurar ABRIGATE_API_URL en local.properties")
+                )
             try {
-                val texto = modelo.generateContent(prompt).text
-                    ?: return@withContext Result.failure(Exception("Respuesta vacía"))
-                Result.success(Gson().fromJson(texto, Recomendacion::class.java))
+                val dto = api.recomendar(AuthManager.idToken(), RecomendacionPedido(clima))
+                val outfit = dto.outfit ?: error("Respuesta sin outfit")
+                Result.success(
+                    Recomendacion(
+                        outfit = outfit,
+                        actividad = dto.actividad.orEmpty(),
+                        tip = dto.tip.orEmpty()
+                    )
+                )
             } catch (e: Exception) {
-                Log.e("Abrigate", "Falló Gemini", e)
+                Log.e("Abrigate", "Falló la recomendación", e)
                 Result.failure(e)
             }
         }

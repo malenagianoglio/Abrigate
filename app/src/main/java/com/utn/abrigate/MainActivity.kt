@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import com.google.firebase.Firebase
 import com.google.firebase.appcheck.appCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+import com.utn.abrigate.data.AdsManager
 import com.utn.abrigate.ui.PantallaClima
 import com.utn.abrigate.ui.theme.AbrigateTheme
 
@@ -26,6 +27,8 @@ class MainActivity : ComponentActivity() {
                 DebugAppCheckProviderFactory.getInstance()
             )
         }
+
+        AdsManager.inicializar(this)
 
         enableEdgeToEdge()
         setContent {

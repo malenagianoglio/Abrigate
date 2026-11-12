@@ -15,6 +15,16 @@ data class Recomendacion(
     val tip: String
 )
 
+/**
+ * Un plan de la suscripción Abrigate Plus, tal como lo muestra el paywall.
+ * [id] es el ID del plan base en Play Console: "semanal", "mensual" o "anual".
+ */
+data class PlanPlus(
+    val id: String,
+    val precio: String,
+    val tienePrueba: Boolean
+)
+
 interface ClimaRepository {
     suspend fun obtenerClima(lat: Double, lon: Double): Result<Clima>
 }
