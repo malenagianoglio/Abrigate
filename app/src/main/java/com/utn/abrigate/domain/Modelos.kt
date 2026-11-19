@@ -29,6 +29,18 @@ interface ClimaRepository {
     suspend fun obtenerClima(lat: Double, lon: Double): Result<Clima>
 }
 
+/**
+ * TP6: personalización. Valores de una lista cerrada (el backend descarta otros):
+ * sensibilidad "friolento" o "caluroso"; transporte "a pie", "bici", "auto" o
+ * "colectivo"; ajuste "mas_abrigo" o "menos_abrigo", calculado con las valoraciones.
+ */
+data class PerfilUsuario(
+    val sensibilidad: String?,
+    val transporte: String?,
+    val ajuste: String?
+)
+
 interface RecomendacionRepository {
-    suspend fun generar(clima: Clima): Result<Recomendacion>
+    /** [zona]: celda de 0,1° para las alertas del TP6; no identifica al usuario. */
+    suspend fun generar(clima: Clima, perfil: PerfilUsuario? = null, zona: String? = null): Result<Recomendacion>
 }

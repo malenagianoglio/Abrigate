@@ -52,6 +52,17 @@ async function pedirAOpenWeather(lat, lon) {
   return resp.json();
 }
 
+// TP6: pronóstico de 5 días en bloques de 3 h, para las alertas por zona.
+// Se pide una vez por zona y por día, así que no hace falta caché.
+async function pedirPronostico({ lat, lon }) {
+  const url = new URL("https://api.openweathermap.org/data/2.5/forecast");
+  url.search = new URLSearchParams({ lat: String(lat), lon: String(lon), appid: API_KEY, units: "metric" });
+  stats.llamadasOpenWeather++;
+  const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!resp.ok) throw new Error(`OpenWeather (pronóstico) respondió ${resp.status}`);
+  return resp.json();
+}
+
 async function obtenerClima(lat, lon) {
   const clave = claveZona(lat, lon);
   const ahora = Date.now();
@@ -124,11 +135,13 @@ function tokenUsuario(req) {
   return (propio && propio.replace(/^Bearer /, "")) || tokenBearer(req);
 }
 
-// Rutas de Abrigate Plus. Devuelve true si atendió el pedido.
-async function rutasPlus(req, res, url, { suscripciones, auth, recomendador }) {
-  const rutas = ["/suscripcion/verificar", "/suscripcion/estado", "/rtdn", "/recomendacion"];
+// Rutas de Abrigate Plus (TP4) y de alertas (TP6). Devuelve true si atendió el pedido.
+async function rutasPlus(req, res, url, { suscripciones, auth, recomendador, alertas }) {
+  const rutas = ["/suscripcion/verificar", "/suscripcion/estado", "/rtdn", "/recomendacion", "/alertas"];
   if (!rutas.includes(url.pathname)) return false;
-  const disponible = url.pathname === "/recomendacion" ? recomendador : suscripciones;
+  const disponible =
+    url.pathname === "/recomendacion" ? recomendador :
+    url.pathname === "/alertas" ? alertas : suscripciones;
   if (!disponible || !auth) {
     responder(res, 503, { error: "Servicio no configurado en este entorno" });
     return true;
@@ -145,6 +158,17 @@ async function rutasPlus(req, res, url, { suscripciones, auth, recomendador }) {
       return true;
     }
 
+    // TP6: la llama Cloud Scheduler todos los días a las 20 h, con un token OIDC.
+    if (url.pathname === "/alertas" && req.method === "POST") {
+      const token = tokenBearer(req);
+      if (!token) throw new ErrorCliente(401, "Falta el token de Cloud Scheduler");
+      await auth.scheduler(token).catch(() => { throw new ErrorCliente(401, "Token de Cloud Scheduler inválido"); });
+      const resultado = await alertas.enviar();
+      console.log(JSON.stringify({ severity: "INFO", message: "Alertas procesadas", ...resultado }));
+      responder(res, 200, resultado);
+      return true;
+    }
+
     // /recomendacion y /suscripcion/* las llama la app con el token de su usuario anónimo.
     // Así nadie de afuera puede gastar la cuota gratuita de Gemini.
     const token = tokenUsuario(req);
@@ -152,8 +176,14 @@ async function rutasPlus(req, res, url, { suscripciones, auth, recomendador }) {
     const uid = await auth.usuario(token).catch(() => { throw new ErrorCliente(401, "Token de Firebase inválido"); });
 
     if (url.pathname === "/recomendacion" && req.method === "POST") {
-      const { clima } = await leerCuerpo(req);
-      responder(res, 200, await recomendador.recomendar(clima));
+      const { clima, perfil, zona } = await leerCuerpo(req);
+      responder(res, 200, await recomendador.recomendar(clima, perfil));
+      // TP6: anota que la zona tuvo actividad, para las alertas. Va después de
+      // responder y sin esperar: si Firestore falla, la recomendación no se entera.
+      if (zona && alertas) {
+        alertas.registrarZona(zona).catch((e) =>
+          console.warn(JSON.stringify({ severity: "WARNING", message: `No se registró la zona: ${e.message}` })));
+      }
       return true;
     }
     if (url.pathname === "/suscripcion/verificar" && req.method === "POST") {
@@ -223,6 +253,7 @@ function crearServidor(deps = {}) {
 // Arma las dependencias reales a partir de variables de entorno:
 // - GEMINI_API_KEY (clave de un proyecto SIN facturación) habilita /recomendacion.
 // - PAQUETE_ANDROID habilita las rutas de Abrigate Plus.
+// - ALERTAS_CUENTA y ALERTAS_AUDIENCIA habilitan POST /alertas (TP6).
 // Lo que no esté configurado responde 503, y /clima sigue funcionando igual.
 function dependencias() {
   const { crearAutenticacion } = require("./google");
@@ -230,8 +261,20 @@ function dependencias() {
     auth: crearAutenticacion({
       audienciaRtdn: process.env.RTDN_AUDIENCIA,
       cuentaRtdn: process.env.RTDN_CUENTA,
+      audienciaAlertas: process.env.ALERTAS_AUDIENCIA,
+      cuentaAlertas: process.env.ALERTAS_CUENTA,
     }),
   };
+  // TP6: alertas por zona con FCM. Se habilitan con la cuenta de Cloud Scheduler.
+  if (process.env.ALERTAS_CUENTA) {
+    const { crearAlertas } = require("./alertas");
+    const { crearStoreZonas, crearMensajeria } = require("./google");
+    deps.alertas = crearAlertas({
+      store: crearStoreZonas(),
+      mensajeria: crearMensajeria(),
+      pronostico: pedirPronostico,
+    });
+  }
   if (process.env.GEMINI_API_KEY) {
     const { crearRecomendador } = require("./recomendacion");
     deps.recomendador = crearRecomendador({

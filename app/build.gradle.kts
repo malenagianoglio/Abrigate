@@ -91,6 +91,11 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:8.3.0")
     implementation("com.google.android.gms:play-services-ads:25.5.0")
 
+    // TP6: retención (notificaciones push y locales, pedido de reseña)
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("com.google.android.play:review-ktx:2.0.2")
+
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")

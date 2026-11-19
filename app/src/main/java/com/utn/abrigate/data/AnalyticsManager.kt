@@ -53,6 +53,38 @@ object AnalyticsManager {
         analytics.logEvent("quitar_anuncios_click") { param("pantalla", "clima") }
     }
 
+    // --- TP6: retención ---
+
+    /** Propiedad de usuario para segmentar campañas (audiencia «Gratis con 3 o más sesiones»). */
+    fun esPlus(plus: Boolean) {
+        analytics.setUserProperty("es_plus", plus.toString())
+    }
+
+    fun permisoNotificaciones(aceptado: Boolean) {
+        analytics.logEvent("permiso_notificaciones") { param("aceptado", if (aceptado) 1L else 0L) }
+    }
+
+    /** Evento de conversión de la campaña «Llega el frío». */
+    fun avisoActivado(origen: String) {
+        analytics.logEvent("aviso_activado") { param("origen", origen) }
+    }
+
+    fun rachaActualizada(dias: Int) {
+        analytics.logEvent("racha_actualizada") { param("dias", dias.toLong()) }
+    }
+
+    fun insigniaObtenida(id: String) {
+        analytics.logEvent("insignia_obtenida") { param("insignia", id) }
+    }
+
+    fun onboarding(completado: Boolean) {
+        analytics.logEvent("onboarding_completado") { param("completado", if (completado) 1L else 0L) }
+    }
+
+    fun resenaSolicitada() {
+        analytics.logEvent("resena_solicitada", null)
+    }
+
     fun errorIntegracion(servicio: String, detalle: String) {
         analytics.logEvent("error_integracion") {
             param("servicio", servicio)

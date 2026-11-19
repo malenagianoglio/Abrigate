@@ -2,6 +2,7 @@ package com.utn.abrigate.data.remote
 
 import com.utn.abrigate.BuildConfig
 import com.utn.abrigate.domain.Clima
+import com.utn.abrigate.domain.PerfilUsuario
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -32,7 +33,12 @@ interface AbrigateApi {
     ): EstadoSuscripcionDto
 }
 
-data class RecomendacionPedido(val clima: Clima)
+/** Gson omite los campos null, así que perfil y zona solo viajan si existen. */
+data class RecomendacionPedido(
+    val clima: Clima,
+    val perfil: PerfilUsuario? = null,
+    val zona: String? = null
+)
 
 data class RecomendacionDto(
     val outfit: String?,

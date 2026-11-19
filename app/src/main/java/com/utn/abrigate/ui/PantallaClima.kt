@@ -1,6 +1,8 @@
 package com.utn.abrigate.ui
 
 import android.Manifest
+import android.app.TimePickerDialog
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -24,9 +26,16 @@ import kotlinx.coroutines.launch
 @Composable
 fun PantallaClima(
     vm: ClimaViewModel = viewModel(),
-    plusVm: PlusViewModel = viewModel()
+    plusVm: PlusViewModel = viewModel(),
+    abrirRecomendacion: Boolean = false,
+    onRecomendacionAbierta: () -> Unit = {}
 ) {
     val estado by vm.estado.collectAsStateWithLifecycle()
+    val racha by vm.estadoRacha.collectAsStateWithLifecycle()
+    val avisosActivados by vm.avisosActivados.collectAsStateWithLifecycle()
+    val horaAviso by vm.horaAviso.collectAsStateWithLifecycle()
+    val mostrarOnboarding by vm.mostrarOnboarding.collectAsStateWithLifecycle()
+    var ofrecerAvisos by remember { mutableStateOf(false) }
     val esPlus by plusVm.esPlus.collectAsStateWithLifecycle()
     val planes by plusVm.planes.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -67,6 +76,33 @@ fun PantallaClima(
         }
     }
 
+    // TP6: avisos de retención (insignias, permiso de notificaciones y reseña)
+    val pedirPermisoAvisos = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { aceptado -> vm.resultadoPermisoAvisos(aceptado) }
+
+    LaunchedEffect(Unit) {
+        vm.eventos.collect { evento ->
+            when (evento) {
+                is EventoRetencion.InsigniaNueva -> Toast.makeText(
+                    context,
+                    "¡Nueva insignia! ${evento.insignia.nombre}: ${evento.insignia.descripcion}",
+                    Toast.LENGTH_LONG
+                ).show()
+                EventoRetencion.OfrecerAvisos -> ofrecerAvisos = true
+                EventoRetencion.PedirResena -> activity?.let { pedirResena(it) }
+            }
+        }
+    }
+
+    // Al tocar una notificación se abre directamente la recomendación.
+    LaunchedEffect(abrirRecomendacion) {
+        if (abrirRecomendacion) {
+            onRecomendacionAbierta()
+            pedirPermiso.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -92,6 +128,17 @@ fun PantallaClima(
                     TextButton(onClick = { abrirPaywall("encabezado") }) { Text("Probar Plus") }
                 }
             }
+
+            FilaRacha(
+                racha = racha,
+                avisosActivados = avisosActivados,
+                horaAviso = horaAviso,
+                onPerfil = { vm.editarPerfil() },
+                onCambiarHora = {
+                    TimePickerDialog(context, { _, h, m -> vm.cambiarHoraAviso(h * 60 + m) },
+                        horaAviso / 60, horaAviso % 60, true).show()
+                }
+            )
 
             Button(
                 onClick = { pedirPermiso.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
@@ -156,6 +203,28 @@ fun PantallaClima(
                 }
             )
         }
+    }
+
+    if (mostrarOnboarding) {
+        DialogoOnboarding(
+            inicial = vm.perfilActual(),
+            onListo = { s, t -> vm.terminarOnboarding(s, t) },
+            onSaltear = { vm.saltearOnboarding() }
+        )
+    }
+
+    if (ofrecerAvisos) {
+        DialogoAvisos(
+            onAceptar = {
+                ofrecerAvisos = false
+                if (Build.VERSION.SDK_INT >= 33) pedirPermisoAvisos.launch(Manifest.permission.POST_NOTIFICATIONS)
+                else vm.resultadoPermisoAvisos(true)   // antes de Android 13 no hace falta pedirlo
+            },
+            onAhoraNo = {
+                ofrecerAvisos = false
+                vm.posponerAvisos()
+            }
+        )
     }
 
     if (mostrarPaywall) {

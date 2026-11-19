@@ -7,6 +7,7 @@ const { GoogleAuth, OAuth2Client } = require("google-auth-library");
 const { initializeApp, getApps } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth");
+const { getMessaging } = require("firebase-admin/messaging");
 
 function app() {
   return getApps()[0] || initializeApp();
@@ -52,8 +53,28 @@ function crearStore() {
   };
 }
 
+// TP6: zonas consultadas (colección "zonas", id = celda de 0,1°). Solo se guarda
+// la celda y fechas: ningún dato del usuario.
+function crearStoreZonas() {
+  const coleccion = () => getFirestore(app()).collection("zonas");
+  return {
+    registrar: (zona, t) => coleccion().doc(zona).set({ ultimaConsulta: t }, { merge: true }),
+    async activas(desde) {
+      const snap = await coleccion().where("ultimaConsulta", ">=", desde).get();
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+    actualizar: (zona, datos) => coleccion().doc(zona).set(datos, { merge: true }),
+  };
+}
+
+// TP6: envío de notificaciones con la API HTTP v1 de FCM. Usa la cuenta de
+// servicio de Cloud Run (rol "Firebase Cloud Messaging Admin"), sin claves.
+function crearMensajeria() {
+  return { send: (mensaje) => getMessaging(app()).send(mensaje) };
+}
+
 // Quién hace cada pedido.
-function crearAutenticacion({ audienciaRtdn, cuentaRtdn }) {
+function crearAutenticacion({ audienciaRtdn, cuentaRtdn, audienciaAlertas, cuentaAlertas }) {
   const oauth = new OAuth2Client();
   return {
     // Token de Firebase Auth que manda la app (usuario anónimo). Devuelve el uid.
@@ -68,7 +89,16 @@ function crearAutenticacion({ audienciaRtdn, cuentaRtdn }) {
       if (cuentaRtdn && datos.email !== cuentaRtdn) throw new Error("Cuenta de Pub/Sub no autorizada");
       return datos.email;
     },
+    // TP6: token OIDC de Cloud Scheduler para POST /alertas. Se exige la cuenta
+    // y la audiencia configuradas: sin ellas nadie puede disparar envíos.
+    async scheduler(idToken) {
+      if (!cuentaAlertas || !audienciaAlertas) throw new Error("ALERTAS_CUENTA o ALERTAS_AUDIENCIA sin configurar");
+      const ticket = await oauth.verifyIdToken({ idToken, audience: audienciaAlertas });
+      const datos = ticket.getPayload();
+      if (datos.email !== cuentaAlertas || !datos.email_verified) throw new Error("Cuenta no autorizada");
+      return datos.email;
+    },
   };
 }
 
-module.exports = { crearPlay, crearStore, crearAutenticacion };
+module.exports = { crearPlay, crearStore, crearStoreZonas, crearMensajeria, crearAutenticacion };

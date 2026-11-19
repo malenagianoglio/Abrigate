@@ -10,14 +10,49 @@ const { ErrorCliente } = require("./suscripciones");
 
 const URL_GEMINI = "https://generativelanguage.googleapis.com/v1beta/models";
 
-function crearPrompt(c) {
+// TP6: personalización. Solo se aceptan valores de una lista cerrada, así el
+// perfil no puede usarse para meter texto libre en el prompt.
+const SENSIBILIDAD = {
+  friolento: "La persona es friolenta: recomendá un poco más de abrigo de lo habitual.",
+  caluroso: "La persona es calurosa: recomendá un poco menos de abrigo de lo habitual.",
+};
+const TRANSPORTE = {
+  "a pie": "Se mueve a pie.",
+  bici: "Se mueve en bicicleta: tené en cuenta el viento y la lluvia.",
+  auto: "Se mueve en auto, así que pasa poco tiempo a la intemperie.",
+  colectivo: "Se mueve en colectivo: incluí la espera en la parada.",
+};
+const AJUSTE = {
+  mas_abrigo: "Según sus valoraciones, suele tener más frío que lo esperado.",
+  menos_abrigo: "Según sus valoraciones, suele tener más calor que lo esperado.",
+};
+
+function validarPerfil(p) {
+  const de = (tabla, v) => (typeof v === "string" && Object.hasOwn(tabla, v) ? v : null);
+  return {
+    sensibilidad: de(SENSIBILIDAD, p?.sensibilidad),
+    transporte: de(TRANSPORTE, p?.transporte),
+    ajuste: de(AJUSTE, p?.ajuste),
+  };
+}
+
+function textoPerfil(perfil) {
+  const lineas = [
+    SENSIBILIDAD[perfil.sensibilidad],
+    TRANSPORTE[perfil.transporte],
+    AJUSTE[perfil.ajuste],
+  ].filter(Boolean);
+  return lineas.length ? `\nSobre la persona: ${lineas.join(" ")}\n` : "";
+}
+
+function crearPrompt(c, perfil = validarPerfil(null)) {
   return `Sos un asistente de vestimenta argentino. Hablás en español rioplatense,
 breve y directo, sin emojis.
 
 Clima actual en ${c.ciudad}: ${c.temperatura}°C,
 sensación térmica ${c.sensacion}°C, ${c.descripcion},
 humedad ${c.humedad}%, viento ${c.vientoKmh} km/h.
-
+${textoPerfil(perfil)}
 Respondé únicamente con un JSON con esta forma exacta:
 {"outfit": "...", "actividad": "...", "tip": "..."}
 
@@ -70,7 +105,7 @@ function crearRecomendador({
     ...(modeloRespaldo && modeloRespaldo !== modelo ? [{ modelo: modeloRespaldo, espera: 0 }] : []),
   ];
 
-  async function pedir(clima, nombreModelo) {
+  async function pedir(prompt, nombreModelo) {
     const generationConfig = { temperature: 0.8, responseMimeType: "application/json" };
     // Los modelos 2.5 "piensan" antes de responder: para una respuesta corta
     // como esta no hace falta, y apagarlo la hace más rápida y gasta menos cuota.
@@ -80,7 +115,7 @@ function crearRecomendador({
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: crearPrompt(clima) }] }],
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig,
         }),
         signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS),
@@ -93,8 +128,9 @@ function crearRecomendador({
 
   const saturado = (r) => r.status === 500 || r.status === 503 || r.status === 504;
 
-  async function recomendar(datosClima) {
+  async function recomendar(datosClima, datosPerfil) {
     const clima = validarClima(datosClima);
+    const prompt = crearPrompt(clima, validarPerfil(datosPerfil));
 
     let resp;
     for (const [i, intento] of intentos.entries()) {
@@ -105,7 +141,7 @@ function crearRecomendador({
         }));
       }
       if (intento.espera) await esperar(intento.espera);
-      resp = await pedir(clima, intento.modelo);
+      resp = await pedir(prompt, intento.modelo);
       if (!saturado(resp)) break;
     }
 
@@ -139,4 +175,4 @@ function crearRecomendador({
   return { recomendar };
 }
 
-module.exports = { crearRecomendador, validarClima };
+module.exports = { crearRecomendador, validarClima, validarPerfil, crearPrompt };
